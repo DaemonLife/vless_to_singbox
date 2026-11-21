@@ -37,13 +37,13 @@ def parse_bool(value: str, parameter: str) -> bool:
     if normalized in FALSE_VALUES:
         return False
 
-    raise ValueError(f"Некорректное значение {parameter}: {value!r}")
+    raise ValueError(f"Invalid value for {parameter}: {value!r}")
 
 
 def normalize_server(server: str) -> str:
     """Validate and normalize an IPv4, IPv6, or DNS server address."""
     if not server or any(char.isspace() for char in server):
-        raise ValueError("Некорректный адрес сервера")
+        raise ValueError("Invalid server address")
 
     try:
         return str(ipaddress.ip_address(server))
@@ -53,17 +53,17 @@ def normalize_server(server: str) -> str:
     try:
         ascii_server = server.encode("idna").decode("ascii").lower()
     except UnicodeError as error:
-        raise ValueError("Некорректное доменное имя сервера") from error
+        raise ValueError("Invalid server domain name") from error
 
     # A trailing dot is valid in a fully qualified domain name.
     domain = ascii_server[:-1] if ascii_server.endswith(".") else ascii_server
     if not domain or len(domain) > 253:
-        raise ValueError("Некорректное доменное имя сервера")
+        raise ValueError("Invalid server domain name")
 
     labels = domain.split(".")
     label_pattern = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
     if any(not label_pattern.fullmatch(label) for label in labels):
-        raise ValueError("Некорректное доменное имя сервера")
+        raise ValueError("Invalid server domain name")
 
     return ascii_server
 
@@ -71,7 +71,7 @@ def normalize_server(server: str) -> str:
 def reject_control_characters(value: str, parameter: str) -> str:
     """Reject control characters in values copied into the sing-box config."""
     if any(unicodedata.category(char) == "Cc" for char in value):
-        raise ValueError(f"Параметр {parameter} содержит управляющие символы")
+        raise ValueError(f"Parameter {parameter} contains control characters")
     return value
 
 
@@ -97,29 +97,29 @@ def parse_link(link: str, index: int) -> dict:
     try:
         uri = urlsplit(link.strip())
     except ValueError as error:
-        raise ValueError(f"Некорректная ссылка: {error}") from error
+        raise ValueError(f"Invalid link: {error}") from error
 
     if uri.scheme.casefold() != "vless":
-        raise ValueError("Это не VLESS-ссылка")
+        raise ValueError("This is not a VLESS link")
 
     if uri.username is None:
-        raise ValueError("В ссылке отсутствует UUID")
+        raise ValueError("The link is missing a UUID")
     if uri.password is not None:
-        raise ValueError("Формат с паролем в user-info не поддерживается")
+        raise ValueError("The user-info password format is not supported")
 
     try:
         server = normalize_server(uri.hostname or "")
         port = uri.port
     except ValueError as error:
-        raise ValueError(f"Некорректный сервер или порт: {error}") from error
+        raise ValueError(f"Invalid server or port: {error}") from error
 
     if port is None or not 1 <= port <= 65535:
-        raise ValueError("Порт должен быть указан в диапазоне 1–65535")
+        raise ValueError("Port must be in the range 1–65535")
 
     try:
         user_id = str(uuidlib.UUID(unquote(uri.username, errors="strict")))
     except (ValueError, UnicodeError, AttributeError) as error:
-        raise ValueError("Некорректный VLESS UUID") from error
+        raise ValueError("Invalid VLESS UUID") from error
 
     try:
         raw_params = parse_qs(
@@ -129,7 +129,7 @@ def parse_link(link: str, index: int) -> dict:
             errors="strict",
         )
     except (ValueError, UnicodeError) as error:
-        raise ValueError(f"Некорректная строка параметров: {error}") from error
+        raise ValueError(f"Invalid query string: {error}") from error
 
     # Query parameter names are case-insensitive; the last duplicate value wins.
     params = {
@@ -151,23 +151,23 @@ def parse_link(link: str, index: int) -> dict:
     encryption = (get("encryption", default="none") or "none").strip().casefold()
 
     if encryption not in {"", "none"}:
-        raise ValueError(f"Неподдерживаемый VLESS encryption: {encryption}")
+        raise ValueError(f"Unsupported VLESS encryption: {encryption}")
 
     if security not in SUPPORTED_SECURITY:
-        raise ValueError(f"Неподдерживаемый security: {security}")
+        raise ValueError(f"Unsupported security setting: {security}")
 
     if transport not in SUPPORTED_TRANSPORTS:
-        raise ValueError(f"Неподдерживаемый transport: {transport}")
+        raise ValueError(f"Unsupported transport: {transport}")
 
     if transport == "raw":
         transport = "tcp"
 
     if flow and flow != "xtls-rprx-vision":
-        raise ValueError(f"Неподдерживаемый flow: {flow}")
+        raise ValueError(f"Unsupported flow: {flow}")
 
     if flow and (security not in {"tls", "reality"} or transport != "tcp"):
         raise ValueError(
-            "xtls-rprx-vision требует security=tls/reality и transport=tcp"
+            "xtls-rprx-vision requires security=tls/reality and transport=tcp"
         )
 
     name = safe_profile_name(uri.fragment, index)
@@ -189,7 +189,7 @@ def parse_link(link: str, index: int) -> dict:
         server_name = get("sni", "servername", default=server) or server
         reject_control_characters(server_name, "sni")
         if any(char.isspace() for char in server_name):
-            raise ValueError("Параметр sni не должен содержать пробелы")
+            raise ValueError("The sni parameter must not contain whitespace")
         tls = {
             "enabled": True,
             "server_name": server_name,
@@ -218,7 +218,7 @@ def parse_link(link: str, index: int) -> dict:
             public_key = get("pbk", "publickey").strip()
             reject_control_characters(public_key, "pbk")
             if not public_key:
-                raise ValueError("REALITY: отсутствует pbk (public key)")
+                raise ValueError("REALITY: missing pbk (public key)")
 
             reality = {
                 "enabled": True,
@@ -231,7 +231,7 @@ def parse_link(link: str, index: int) -> dict:
                     r"[0-9a-fA-F]+", short_id
                 ):
                     raise ValueError(
-                        "REALITY short ID должен содержать до 16 шестнадцатеричных символов"
+                        "REALITY short ID must contain up to 16 hexadecimal characters"
                     )
                 reality["short_id"] = short_id.lower()
 
@@ -245,7 +245,7 @@ def parse_link(link: str, index: int) -> dict:
     host = get("host", "authority").strip()
     reject_control_characters(host, "host")
     if any(char.isspace() for char in host):
-        raise ValueError("Параметр host не должен содержать пробелы")
+        raise ValueError("The host parameter must not contain whitespace")
 
     if transport == "ws":
         ws_transport = {
@@ -261,16 +261,16 @@ def parse_link(link: str, index: int) -> dict:
             try:
                 early_data_size = int(early_data)
             except ValueError as error:
-                raise ValueError(f"Некорректное значение WebSocket ed: {early_data!r}") from error
+                raise ValueError(f"Invalid WebSocket ed value: {early_data!r}") from error
             if not 0 <= early_data_size <= 2_147_483_647:
-                raise ValueError("WebSocket ed должен быть неотрицательным целым числом")
+                raise ValueError("WebSocket ed must be a non-negative integer")
             if early_data_size:
                 ws_transport["max_early_data"] = early_data_size
 
         early_data_header = get("eh").strip()
         if early_data_header:
             if not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", early_data_header):
-                raise ValueError("Некорректное имя HTTP-заголовка в параметре eh")
+                raise ValueError("Invalid HTTP header name in the eh parameter")
             ws_transport["early_data_header_name"] = early_data_header
 
         outbound["transport"] = ws_transport
@@ -305,7 +305,7 @@ def parse_link(link: str, index: int) -> dict:
         header_type = get("headertype", default="none").strip().casefold()
         if header_type not in {"", "none"}:
             raise ValueError(
-                f"TCP headerType={header_type} не поддерживается"
+                f"TCP headerType={header_type} is not supported"
             )
 
     return {
@@ -321,12 +321,12 @@ def validate_proxy_host(value: str) -> str:
         address = ipaddress.ip_address(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError(
-            "Укажи IP loopback-интерфейса: 127.0.0.1 или ::1"
+            "Specify a loopback IP address: 127.0.0.1 or ::1"
         ) from error
 
     if not address.is_loopback:
         raise argparse.ArgumentTypeError(
-            "Локальный прокси разрешено привязывать только к loopback-адресу"
+            "The local proxy can only bind to a loopback address"
         )
 
     return str(address)
@@ -336,7 +336,7 @@ def validate_tun_name(value: str) -> str:
     """Validate a Linux network interface name (maximum 15 characters)."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", value):
         raise argparse.ArgumentTypeError(
-            "Имя TUN-интерфейса должно содержать 1–15 символов: буквы, цифры, _, . или -"
+            "The TUN interface name must be 1–15 characters long and contain only letters, digits, _, . or -"
         )
     return value
 
@@ -483,62 +483,62 @@ def write_json_secure(path: Path, config: dict, overwrite: bool) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Конвертация VLESS-ссылок в конфигурации sing-box для Arch Linux"
+        description="Convert VLESS links into sing-box configurations"
     )
-    parser.add_argument("input", help="TXT-файл с VLESS-ссылками")
+    parser.add_argument("input", help="TXT file containing VLESS links")
     parser.add_argument(
         "--proxy-host",
         type=validate_proxy_host,
         default="127.0.0.1",
-        help="Loopback IP локального прокси (по умолчанию: 127.0.0.1)",
+        help="Loopback IP address for the local proxy (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--proxy-port",
         type=int,
         default=2080,
-        help="Порт локального прокси (по умолчанию: 2080)",
+        help="Local proxy port (default: 2080)",
     )
     parser.add_argument(
         "--tun-name",
         type=validate_tun_name,
         default="sing0",
-        help="Имя TUN-интерфейса (по умолчанию: sing0)",
+        help="TUN interface name (default: sing0)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path.cwd(),
-        help="Каталог для JSON-файлов (по умолчанию: текущий каталог)",
+        help="Directory for JSON files (default: current directory)",
     )
     parser.add_argument(
         "--no-urltest",
         action="store_true",
-        help="Отключить автоматический выбор сервера",
+        help="Disable automatic server selection",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Перезаписать уже существующие выходные файлы",
+        help="Overwrite existing output files",
     )
 
     args = parser.parse_args()
 
     if not 1 <= args.proxy_port <= 65535:
-        parser.error("Порт должен быть в диапазоне 1–65535")
+        parser.error("Port must be in the range 1–65535")
 
     source = Path(args.input)
     if not source.is_file():
-        parser.error(f"Файл не найден: {source}")
+        parser.error(f"File not found: {source}")
 
     try:
         lines = source.read_text(encoding="utf-8-sig").splitlines()
     except (OSError, UnicodeError) as error:
-        parser.error(f"Не удалось прочитать входной файл: {error}")
+        parser.error(f"Failed to read input file: {error}")
 
     proxies = []
     errors = 0
 
-    print("\nОбработка VLESS-ссылок:\n")
+    print("\nProcessing VLESS links:\n")
 
     for line_number, line in enumerate(lines, 1):
         line = line.strip()
@@ -551,20 +551,20 @@ def main() -> int:
             print(f"[OK] {proxy['name']}")
         except ValueError as error:
             errors += 1
-            print(f"[ERROR] Строка {line_number}: {error}", file=sys.stderr)
+            print(f"[ERROR] Line {line_number}: {error}", file=sys.stderr)
 
     if not proxies:
-        print("\nНет подходящих VLESS-ссылок.", file=sys.stderr)
+        print("\nNo valid VLESS links found.", file=sys.stderr)
         return 1
 
     output_dir = args.output_dir.expanduser()
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as error:
-        parser.error(f"Не удалось создать каталог вывода: {error}")
+        parser.error(f"Failed to create output directory: {error}")
 
     if not output_dir.is_dir():
-        parser.error(f"Каталог вывода не является каталогом: {output_dir}")
+        parser.error(f"Output path is not a directory: {output_dir}")
 
     configs = build_configs(proxies, args)
     output_paths = [output_dir / filename for filename in configs]
@@ -574,32 +574,32 @@ def main() -> int:
         source_resolved = source.resolve(strict=True)
         for output_path in output_paths:
             if output_path.resolve(strict=False) == source_resolved:
-                parser.error(f"Выходной файл совпадает с входным: {output_path}")
+                parser.error(f"Output file matches the input file: {output_path}")
     except OSError as error:
-        parser.error(f"Не удалось проверить пути файлов: {error}")
+        parser.error(f"Failed to validate file paths: {error}")
 
     if not args.force:
         existing = [path for path in output_paths if os.path.lexists(path)]
         if existing:
             names = ", ".join(str(path) for path in existing)
             parser.error(
-                f"Файл(ы) уже существуют: {names}. Используй --force для перезаписи."
+                f"The following file(s) already exist: {names}. Use --force to overwrite them."
             )
 
     try:
         for filename, config in configs.items():
             output_path = output_dir / filename
             write_json_secure(output_path, config, overwrite=args.force)
-            print(f"[OK] Создан {output_path} (права 600)")
+            print(f"[OK] Created {output_path} (permissions: 600)")
     except OSError as error:
-        parser.error(f"Не удалось записать конфигурацию: {error}")
+        parser.error(f"Failed to write configuration: {error}")
 
     print("\n" + "=" * 48)
-    print(f"Успешно: {len(proxies)}")
-    print(f"Ошибок:   {errors}")
-    print(f"Прокси:   {args.proxy_host}:{args.proxy_port}")
+    print(f"Succeeded: {len(proxies)}")
+    print(f"Errors:    {errors}")
+    print(f"Proxy:     {args.proxy_host}:{args.proxy_port}")
     print(f"TUN:      {args.tun_name}")
-    print(f"Каталог:  {output_dir}")
+    print(f"Directory: {output_dir}")
     print("=" * 48)
 
     return 0
