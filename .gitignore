@@ -1,0 +1,5 @@
+*
+!.gitignore
+!start_singbox.sh
+!vless_to_singbox.py
+!README.md
